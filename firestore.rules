@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Master admin email constant
+    function isAdmin() {
+      return request.auth != null && request.auth.token.email == 'as3625525@gmail.com';
+    }
+
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // Public community collection: ONLY holds non-sensitive public stats (displayName, streak count, level)
+    match /communityPulse/{userId} {
+      allow read: if true;
+      allow write: if isOwner(userId) || isAdmin();
+    }
+
+    // User documents: Only the user can read/write their own profile and private vault.
+    // Admin can read all users for oversight, but users CANNOT read each other's documents!
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) || isAdmin();
+
+      // Sub-collections (dailyLogs, sectors, tradingJournal, proofs)
+      match /dailyLogs/{logId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isOwner(userId);
+      }
+
+      match /sectors/{sectorId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isOwner(userId);
+      }
+
+      match /tradingJournal/{entryId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isOwner(userId);
+      }
+
+      match /proofs/{proofId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isOwner(userId);
+      }
+    }
+  }
+}
