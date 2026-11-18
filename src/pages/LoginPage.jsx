@@ -46,8 +46,14 @@ export default function LoginPage() {
             <p className="mt-1">Add your VITE_FIREBASE_* credentials in your environment variables to enable live Google popup, or click "Try Demo Workspace" below!</p>
           </div>
         ), { duration: 6000, icon: '🔑' });
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        toast('Google popup closed before completing login.', { icon: 'ℹ️' });
+      } else if (err.code === 'auth/unauthorized-domain') {
+        toast.error('This domain is not added to Firebase Authorized Domains! Check Firebase Console -> Authentication -> Settings -> Authorized domains.');
+      } else if (err.code === 'auth/popup-blocked') {
+        toast.error('Browser blocked the Google popup window. Please allow popups for this site.');
       } else {
-        toast.error(`Login error: ${err.message}`);
+        toast.error(`Login error: ${err.message || 'Authentication failed'}`);
       }
     } finally {
       setIsLoggingIn(false);

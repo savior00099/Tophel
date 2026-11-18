@@ -38,13 +38,21 @@ export default function NewUserDashboard() {
     updateTaskNote,
     toggleDailyItem,
     addCustomSector,
-    deleteSector
+    deleteSector,
+    addSubRoad,
+    toggleSubRoad,
+    deleteSubRoad
   } = useData();
 
   // Modals state
   const [showCustomSectorModal, setShowCustomSectorModal] = useState(false);
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+
+  // Sub-roads builder state for creating custom sectors
+  const [newSectorSubRoads, setNewSectorSubRoads] = useState([]);
+  const [subRoadInput, setSubRoadInput] = useState('');
+  const [quickSubRoadInput, setQuickSubRoadInput] = useState('');
 
   // Date selection state (default today)
   const todayStr = new Date().toISOString().split('T')[0];
@@ -88,6 +96,18 @@ export default function NewUserDashboard() {
 
   const isToday = selectedDate === todayStr;
 
+  // Sub-roads builder helpers
+  const handleAddSubRoadToDraft = (e) => {
+    e?.preventDefault();
+    if (!subRoadInput.trim()) return;
+    setNewSectorSubRoads((prev) => [...prev, subRoadInput.trim()]);
+    setSubRoadInput('');
+  };
+
+  const handleRemoveSubRoadFromDraft = (indexToRemove) => {
+    setNewSectorSubRoads((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+  };
+
   // Handler: Create Custom Sector
   const handleCreateSector = (e) => {
     e.preventDefault();
@@ -102,14 +122,22 @@ export default function NewUserDashboard() {
       deadline: newSectorDeadline || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       checkpointDisplay: newSectorDeadline ? new Date(newSectorDeadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Month Checkpoint',
       tier: newSectorTier,
-      tierLabel: newSectorCategory
+      tierLabel: newSectorCategory,
+      subRoads: newSectorSubRoads.map((title) => ({
+        id: `sub_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        title,
+        completed: false,
+        completedAt: null
+      }))
     });
 
-    toast.success('New milestone added to your roadmap!');
+    toast.success('New sector created with sub-roads!');
     setShowCustomSectorModal(false);
     setNewSectorName('');
     setNewSectorObj('');
     setNewSectorDeadline('');
+    setNewSectorSubRoads([]);
+    setSubRoadInput('');
   };
 
   // Handler: Add Custom Daily Task
@@ -253,6 +281,95 @@ export default function NewUserDashboard() {
           </div>
         </div>
       </div>
+
+      {/* ── Active Sector Sub-Roads & Deliverables Tracker ── */}
+      {activeCheckpoint && (
+        <div className="glass-card p-6 border-orange-500/20 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-dark-700">
+            <div>
+              <div className="flex items-center gap-2">
+                <Target className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+                <h3 className="text-base font-black font-sans text-slate-900 dark:text-white">
+                  {activeCheckpoint.name} — Sub-Roads & Deliverables
+                </h3>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-dark-400 mt-0.5">
+                {activeCheckpoint.objective}
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-mono font-bold text-orange-600 dark:text-orange-400 px-3 py-1 rounded-full bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/30">
+                {activeCheckpoint.completionPct || 0}% Complete
+              </span>
+            </div>
+          </div>
+
+          {/* Sub-Roads Checklist */}
+          <div className="space-y-2">
+            {(activeCheckpoint.subRoads || []).length === 0 ? (
+              <p className="text-xs font-mono text-slate-400 dark:text-dark-400 italic py-2">
+                No sub-roads added yet. Add milestone steps below to track your progress!
+              </p>
+            ) : (
+              (activeCheckpoint.subRoads || []).map((sr) => (
+                <div
+                  key={sr.id}
+                  className={`flex items-center justify-between gap-3 p-3 rounded-xl border transition-all ${
+                    sr.completed
+                      ? 'bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/40 text-slate-500 dark:text-dark-400 line-through'
+                      : 'bg-white dark:bg-dark-900 border-slate-200 dark:border-dark-800 text-slate-900 dark:text-white'
+                  }`}
+                >
+                  <label className="flex items-center gap-3 flex-1 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(sr.completed)}
+                      onChange={() => toggleSubRoad(activeCheckpoint.id, sr.id)}
+                      className="w-4 h-4 rounded text-orange-600 focus:ring-orange-500 border-slate-300 dark:border-dark-700"
+                    />
+                    <span className="text-xs font-medium font-sans">{sr.title}</span>
+                    {sr.completedAt && (
+                      <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 no-underline ml-auto">
+                        Cleared {sr.completedAt}
+                      </span>
+                    )}
+                  </label>
+                  <button
+                    onClick={() => deleteSubRoad(activeCheckpoint.id, sr.id)}
+                    className="text-slate-400 hover:text-rose-500 p-1 text-xs"
+                    title="Delete sub-road"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Quick Add Sub-Road input */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!quickSubRoadInput.trim()) return;
+              addSubRoad(activeCheckpoint.id, quickSubRoadInput.trim());
+              setQuickSubRoadInput('');
+              toast.success('Sub-road added!');
+            }}
+            className="flex gap-2 pt-2"
+          >
+            <input
+              type="text"
+              placeholder="+ Add another sub-road to this sector..."
+              value={quickSubRoadInput}
+              onChange={(e) => setQuickSubRoadInput(e.target.value)}
+              className="input-field text-xs flex-1"
+            />
+            <button type="submit" className="btn-primary text-xs shrink-0 py-2">
+              Add Step
+            </button>
+          </form>
+        </div>
+      )}
 
       {/* ── Interactive Daily Non-Negotiables & History View ── */}
       <div className="glass-card p-6 border-orange-500/20 space-y-6">
@@ -659,6 +776,67 @@ export default function NewUserDashboard() {
                     required
                   />
                 </div>
+              </div>
+
+              {/* Sub-Roads / Step-by-Step Deliverables Builder */}
+              <div className="pt-2 border-t border-slate-200 dark:border-dark-800">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-mono uppercase text-slate-700 dark:text-dark-300 font-bold">
+                    Sub-Roads / Milestone Objectives
+                  </label>
+                  <span className="text-[11px] font-mono text-orange-600 dark:text-orange-400">
+                    {newSectorSubRoads.length} added
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-dark-400 mb-2">
+                  Break this sector into tangible sub-steps or chapters to check off as you progress.
+                </p>
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. 1. Complete DCF Valuation Excel Model"
+                    value={subRoadInput}
+                    onChange={(e) => setSubRoadInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddSubRoadToDraft();
+                      }
+                    }}
+                    className="input-field text-xs flex-1"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddSubRoadToDraft}
+                    className="px-3 py-2 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 font-bold text-xs border border-orange-500/30 shrink-0"
+                  >
+                    + Add Sub-Road
+                  </button>
+                </div>
+
+                {newSectorSubRoads.length > 0 && (
+                  <div className="mt-3 space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                    {newSectorSubRoads.map((sr, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-100 dark:bg-dark-900 border border-slate-200 dark:border-dark-800 text-xs"
+                      >
+                        <span className="text-slate-800 dark:text-dark-200 font-sans font-medium line-clamp-1">
+                          {idx + 1}. {sr}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSubRoadFromDraft(idx)}
+                          className="text-slate-400 hover:text-rose-500 transition-colors p-1"
+                          title="Remove"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-3">

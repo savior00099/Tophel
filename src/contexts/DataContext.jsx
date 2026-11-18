@@ -39,8 +39,14 @@ export function DataProvider({ children }) {
         tierLabel: 'Baseline',
         objective: 'Define your core deliverables, lock in daily non-negotiables, and audit your first milestone.',
         status: 'ACTIVE',
-        completionPct: 15,
+        completionPct: 25,
         auditNotes: 'Started my personalized quest.',
+        subRoads: [
+          { id: 'sub_1', title: 'Outline core quarterly targets & deliverables', completed: true, completedAt: '10:00 AM' },
+          { id: 'sub_2', title: 'Lock in first 14 consecutive daily streaks', completed: false, completedAt: null },
+          { id: 'sub_3', title: 'Execute primary milestone deliverable prototype', completed: false, completedAt: null },
+          { id: 'sub_4', title: 'Conduct month-end 85% clearance review', completed: false, completedAt: null }
+        ],
         proofs: []
       }
     ];
@@ -70,8 +76,14 @@ export function DataProvider({ children }) {
           tierLabel: 'Baseline',
           objective: 'Define your core deliverables, lock in daily non-negotiables, and audit your first milestone.',
           status: 'ACTIVE',
-          completionPct: 15,
+          completionPct: 25,
           auditNotes: 'Started my personalized quest.',
+          subRoads: [
+            { id: 'sub_1', title: 'Outline core quarterly targets & deliverables', completed: true, completedAt: '10:00 AM' },
+            { id: 'sub_2', title: 'Lock in first 14 consecutive daily streaks', completed: false, completedAt: null },
+            { id: 'sub_3', title: 'Execute primary milestone deliverable prototype', completed: false, completedAt: null },
+            { id: 'sub_4', title: 'Conduct month-end 85% clearance review', completed: false, completedAt: null }
+          ],
           proofs: []
         }
       ]);
@@ -331,18 +343,100 @@ export function DataProvider({ children }) {
 
   // Add custom sector (user building their own)
   const addCustomSector = (customData) => {
+    const rawSubRoads = customData.subRoads || [];
+    const formattedSubRoads = rawSubRoads.map((sr, idx) => ({
+      id: sr.id || `sub_${Date.now()}_${idx}`,
+      title: typeof sr === 'string' ? sr.trim() : (sr.title || '').trim(),
+      completed: Boolean(sr.completed),
+      completedAt: sr.completedAt || null
+    })).filter((sr) => Boolean(sr.title));
+
+    const completedCount = formattedSubRoads.filter((s) => s.completed).length;
+    const initialPct = formattedSubRoads.length > 0 ? Math.round((completedCount / formattedSubRoads.length) * 100) : 0;
+
     setSectors((prev) => [
       ...prev,
       {
         id: prev.length + 1,
         sectorNumber: `Sector ${String(prev.length + 1).padStart(2, '0')}`,
         status: prev.length === 0 ? 'ACTIVE' : 'LOCKED',
-        completionPct: 0,
+        completionPct: initialPct,
         auditNotes: '',
         proofs: [],
-        ...customData
+        ...customData,
+        subRoads: formattedSubRoads
       }
     ]);
+  };
+
+  // Add a sub-road milestone to any sector
+  const addSubRoad = (sectorId, title) => {
+    if (!title || !title.trim()) return;
+    setSectors((prev) =>
+      prev.map((sec) => {
+        if (sec.id !== sectorId) return sec;
+        const currentSubRoads = sec.subRoads || [];
+        const newSub = {
+          id: `sub_${Date.now()}`,
+          title: title.trim(),
+          completed: false,
+          completedAt: null
+        };
+        const updated = [...currentSubRoads, newSub];
+        const completedCount = updated.filter((s) => s.completed).length;
+        const completionPct = updated.length > 0 ? Math.round((completedCount / updated.length) * 100) : sec.completionPct;
+        return {
+          ...sec,
+          subRoads: updated,
+          completionPct
+        };
+      })
+    );
+  };
+
+  // Toggle a sub-road's completion status
+  const toggleSubRoad = (sectorId, subRoadId) => {
+    setSectors((prev) =>
+      prev.map((sec) => {
+        if (sec.id !== sectorId) return sec;
+        const currentSubRoads = sec.subRoads || [];
+        const updated = currentSubRoads.map((sub) => {
+          if (sub.id !== subRoadId) return sub;
+          const nextCompleted = !sub.completed;
+          return {
+            ...sub,
+            completed: nextCompleted,
+            completedAt: nextCompleted ? new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null
+          };
+        });
+        const completedCount = updated.filter((s) => s.completed).length;
+        const completionPct = updated.length > 0 ? Math.round((completedCount / updated.length) * 100) : sec.completionPct;
+        return {
+          ...sec,
+          subRoads: updated,
+          completionPct,
+          status: completionPct >= 85 ? 'PASSED' : (sec.status === 'PASSED' ? 'ACTIVE' : sec.status)
+        };
+      })
+    );
+  };
+
+  // Delete a sub-road
+  const deleteSubRoad = (sectorId, subRoadId) => {
+    setSectors((prev) =>
+      prev.map((sec) => {
+        if (sec.id !== sectorId) return sec;
+        const currentSubRoads = sec.subRoads || [];
+        const updated = currentSubRoads.filter((s) => s.id !== subRoadId);
+        const completedCount = updated.filter((s) => s.completed).length;
+        const completionPct = updated.length > 0 ? Math.round((completedCount / updated.length) * 100) : 0;
+        return {
+          ...sec,
+          subRoads: updated,
+          completionPct
+        };
+      })
+    );
   };
 
   // Delete custom sector
@@ -415,6 +509,9 @@ export function DataProvider({ children }) {
         updateSector,
         addCustomSector,
         deleteSector,
+        addSubRoad,
+        toggleSubRoad,
+        deleteSubRoad,
         addTradingEntry,
         deleteTradingEntry,
         resetToMasterRoadmap,

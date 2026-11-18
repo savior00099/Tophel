@@ -11,6 +11,13 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == userId;
     }
 
+    // Live Community Chat Lounge: Authenticated users can read and post messages
+    match /community_chat/{messageId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if isAdmin();
+    }
+
     // Public community collection: ONLY holds non-sensitive public stats (displayName, streak count, level)
     match /communityPulse/{userId} {
       allow read: if true;

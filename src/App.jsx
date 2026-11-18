@@ -21,13 +21,13 @@ const AdminPage = lazy(() => import('./pages/AdminPage'));
 
 // High-end Page Loader
 const PageLoader = () => (
-  <div className="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-dark-950 transition-colors">
+  <div className="flex items-center justify-center min-h-screen bg-offwhite-100 dark:bg-dark-950 transition-colors">
     <div className="flex flex-col items-center gap-4">
       <div className="relative">
-        <div className="w-12 h-12 border-4 border-lime-500/20 border-t-lime-500 rounded-full animate-spin" />
-        <div className="absolute inset-0 bg-lime-500/20 rounded-full blur-xl animate-pulse" />
+        <div className="w-12 h-12 border-4 border-orange-500/20 border-t-orange-500 rounded-full animate-spin" />
+        <div className="absolute inset-0 bg-orange-500/20 rounded-full blur-xl animate-pulse" />
       </div>
-      <p className="text-xs font-mono text-lime-600 dark:text-lime-400 tracking-wider uppercase font-semibold">
+      <p className="text-xs font-mono text-orange-600 dark:text-orange-400 tracking-wider uppercase font-semibold">
         Loading Tophel...
       </p>
     </div>

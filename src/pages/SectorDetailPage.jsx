@@ -25,7 +25,8 @@ export default function SectorDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user, isAdmin } = useAuth();
-  const { sectors, updateSector } = useData();
+  const { sectors, updateSector, addSubRoad, toggleSubRoad, deleteSubRoad } = useData();
+  const [newSubRoadText, setNewSubRoadText] = useState('');
 
   const sectorId = parseInt(id, 10);
   const sector = sectors.find((s) => s.id === sectorId);
@@ -221,6 +222,89 @@ export default function SectorDetailPage() {
         targetDate={sectorDeadline || sector.deadline}
         title={`${sector.sectorNumber} Checkpoint Cutoff`}
       />
+
+      {/* ── Sub-Roads / Milestone Objectives Checklist ─────────── */}
+      <div className="glass-card p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-dark-800">
+          <div>
+            <h3 className="text-base font-bold font-sans text-slate-900 dark:text-white flex items-center gap-2">
+              <Target className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+              <span>Sector Sub-Roads & Deliverable Steps</span>
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-dark-400 font-body mt-0.5">
+              Check off deliverables as you complete them. Progress percentage recalculates automatically.
+            </p>
+          </div>
+          <span className="text-xs font-mono font-bold text-orange-600 dark:text-orange-400 px-3 py-1 rounded-full bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/30">
+            {sector.subRoads?.filter((s) => s.completed).length || 0} of {sector.subRoads?.length || 0} Cleared
+          </span>
+        </div>
+
+        <div className="space-y-2">
+          {(sector.subRoads || []).length === 0 ? (
+            <p className="text-xs font-mono text-slate-400 dark:text-dark-500 italic py-2">
+              No sub-roads added yet. Add step-by-step targets below!
+            </p>
+          ) : (
+            (sector.subRoads || []).map((sr) => (
+              <div
+                key={sr.id}
+                className={`flex items-center justify-between gap-3 p-3 rounded-xl border transition-all ${
+                  sr.completed
+                    ? 'bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/40 text-slate-500 dark:text-dark-400 line-through'
+                    : 'bg-white dark:bg-dark-900 border-slate-200 dark:border-dark-800 text-slate-900 dark:text-white'
+                }`}
+              >
+                <label className="flex items-center gap-3 flex-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(sr.completed)}
+                    onChange={() => toggleSubRoad(sector.id, sr.id)}
+                    className="w-4 h-4 rounded text-orange-600 focus:ring-orange-500 border-slate-300 dark:border-dark-700"
+                  />
+                  <span className="text-xs font-medium font-sans">{sr.title}</span>
+                  {sr.completedAt && (
+                    <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 no-underline ml-auto">
+                      Cleared {sr.completedAt}
+                    </span>
+                  )}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => deleteSubRoad(sector.id, sr.id)}
+                  className="text-slate-400 hover:text-rose-500 p-1 text-xs"
+                  title="Delete sub-road"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Form: Quick Add Sub-Road */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!newSubRoadText.trim()) return;
+            addSubRoad(sector.id, newSubRoadText.trim());
+            setNewSubRoadText('');
+            toast.success('Sub-road added!');
+          }}
+          className="flex gap-2 pt-2"
+        >
+          <input
+            type="text"
+            placeholder="+ Add a new sub-road to this sector..."
+            value={newSubRoadText}
+            onChange={(e) => setNewSubRoadText(e.target.value)}
+            className="input-field text-xs flex-1"
+          />
+          <button type="submit" className="btn-primary text-xs shrink-0 py-2">
+            Add Step
+          </button>
+        </form>
+      </div>
 
       {/* ── Dynamic Modular Proof Vault ─────────────────────── */}
       <div className="glass-card p-6 space-y-6">

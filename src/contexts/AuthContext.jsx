@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
   signInWithPopup,
+  signInWithRedirect,
   signOut as firebaseSignOut,
   onAuthStateChanged,
 } from 'firebase/auth';
@@ -15,20 +16,19 @@ import { ADMIN_EMAIL, STORAGE_KEYS } from '../config/constants';
 
 const AuthContext = createContext(null);
 
+// Synchronously detect if valid Firebase credentials are provided
+const hasValidFirebaseConfig = Boolean(
+  import.meta.env.VITE_FIREBASE_API_KEY &&
+  import.meta.env.VITE_FIREBASE_API_KEY !== 'YOUR_API_KEY' &&
+  import.meta.env.VITE_FIREBASE_API_KEY.length > 10
+);
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
-  const [isFirebaseConfigured, setIsFirebaseConfigured] = useState(false);
-
-  // Check if real Firebase keys are loaded
-  useEffect(() => {
-    const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
-    if (apiKey && apiKey !== 'YOUR_API_KEY' && apiKey.length > 10) {
-      setIsFirebaseConfigured(true);
-    }
-  }, []);
+  const isFirebaseConfigured = hasValidFirebaseConfig;
 
   // Determine role based on strict email check
   const getRole = (email) =>
@@ -48,50 +48,76 @@ export function AuthProvider({ children }) {
       }
     }
 
+    // Safety timeout: Never leave the app stuck in loading state longer than 2.5 seconds
+    const safetyTimer = setTimeout(() => {
+      setLoading(false);
+    }, 2500);
+
     // If Firebase is initialized with real credentials, bind listener
-    if (auth && auth.name && import.meta.env.VITE_FIREBASE_API_KEY && import.meta.env.VITE_FIREBASE_API_KEY !== 'YOUR_API_KEY') {
-      const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-        try {
-          if (firebaseUser) {
-            const role = getRole(firebaseUser.email);
-            const profile = {
-              uid: firebaseUser.uid,
-              displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
-              email: firebaseUser.email,
-              photoURL: firebaseUser.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${firebaseUser.email}`,
-              role,
-              lastLogin: new Date().toISOString()
-            };
-
-            // Sync to Firestore if available
+    if (auth && isFirebaseConfigured) {
+      let unsubscribe;
+      try {
+        unsubscribe = onAuthStateChanged(
+          auth,
+          async (firebaseUser) => {
+            clearTimeout(safetyTimer);
             try {
-              if (db) {
-                const userRef = doc(db, 'users', firebaseUser.uid);
-                await setDoc(userRef, { ...profile, serverUpdated: serverTimestamp() }, { merge: true });
+              if (firebaseUser) {
+                const role = getRole(firebaseUser.email);
+                const profile = {
+                  uid: firebaseUser.uid,
+                  displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
+                  email: firebaseUser.email,
+                  photoURL: firebaseUser.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${firebaseUser.email}`,
+                  role,
+                  lastLogin: new Date().toISOString()
+                };
+
+                // Sync to Firestore in background without blocking state
+                if (db) {
+                  try {
+                    const userRef = doc(db, 'users', firebaseUser.uid);
+                    setDoc(userRef, { ...profile, serverUpdated: serverTimestamp() }, { merge: true })
+                      .catch((e) => console.warn('Firestore user profile sync warning:', e.message));
+                  } catch (e) {
+                    console.warn('Firestore sync skipped:', e.message);
+                  }
+                }
+
+                setUser(profile);
+                setUserProfile(profile);
+                localStorage.setItem(STORAGE_KEYS.AUTH_USER, JSON.stringify(profile));
               }
-            } catch (fsErr) {
-              console.warn('Firestore sync note:', fsErr.message);
+            } catch (err) {
+              console.error('Auth state processing error:', err);
+            } finally {
+              setLoading(false);
             }
-
-            setUser(profile);
-            setUserProfile(profile);
-            localStorage.setItem(STORAGE_KEYS.AUTH_USER, JSON.stringify(profile));
+          },
+          (err) => {
+            console.warn('onAuthStateChanged error:', err);
+            clearTimeout(safetyTimer);
+            setLoading(false);
           }
-        } catch (err) {
-          console.error('Auth state error:', err);
-        } finally {
-          setLoading(false);
-        }
-      });
+        );
+      } catch (err) {
+        console.warn('Failed to bind onAuthStateChanged:', err);
+        clearTimeout(safetyTimer);
+        setLoading(false);
+      }
 
-      return () => unsubscribe();
+      return () => {
+        clearTimeout(safetyTimer);
+        if (unsubscribe) unsubscribe();
+      };
     } else {
       // In preview / local mode
+      clearTimeout(safetyTimer);
       setLoading(false);
     }
-  }, []);
+  }, [isFirebaseConfigured]);
 
-  // Google Sign-In with popup
+  // Google Sign-In with popup (and clear error handling)
   const signInWithGoogle = async () => {
     setAuthError(null);
     setLoading(true);
@@ -109,16 +135,25 @@ export function AuthProvider({ children }) {
           role,
           lastLogin: new Date().toISOString()
         };
+
+        // Background sync to Firestore
+        if (db) {
+          try {
+            const userRef = doc(db, 'users', fbUser.uid);
+            setDoc(userRef, { ...profile, serverUpdated: serverTimestamp() }, { merge: true })
+              .catch((e) => console.warn('Firestore profile sync note:', e.message));
+          } catch (e) { }
+        }
+
         setUser(profile);
         setUserProfile(profile);
         localStorage.setItem(STORAGE_KEYS.AUTH_USER, JSON.stringify(profile));
         return profile;
       } else {
-        // Fallback for immediate preview before user pastes production API keys:
         throw new Error('FIREBASE_CONFIG_REQUIRED');
       }
     } catch (err) {
-      console.warn('Google sign-in status:', err.message);
+      console.warn('Google sign-in error:', err.code, err.message);
       setAuthError(err.message);
       throw err;
     } finally {
@@ -126,7 +161,7 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // Instant Launch / Preview Login (allows testing both Admin and Regular user immediately)
+  // Instant Launch / Preview Login
   const loginAsPreviewUser = (email = ADMIN_EMAIL, displayName = 'Master Architect') => {
     const role = getRole(email);
     const mockUser = {
@@ -144,17 +179,18 @@ export function AuthProvider({ children }) {
     setUser(mockUser);
     setUserProfile(mockUser);
     localStorage.setItem(STORAGE_KEYS.AUTH_USER, JSON.stringify(mockUser));
+    setLoading(false);
     return mockUser;
   };
 
   // Sign out
-  const logout = async () => {
+  const signOut = async () => {
     try {
       if (auth && isFirebaseConfigured) {
         await firebaseSignOut(auth);
       }
-    } catch (e) {
-      console.warn('Sign out cleanup:', e);
+    } catch (err) {
+      console.error('Sign out error:', err);
     } finally {
       setUser(null);
       setUserProfile(null);
@@ -162,25 +198,21 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const isAdmin = user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  const isAdmin = user?.role === 'admin';
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        userProfile,
-        loading,
-        authError,
-        isAdmin,
-        isFirebaseConfigured,
-        signInWithGoogle,
-        loginAsPreviewUser,
-        logout,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
+  const value = {
+    user,
+    userProfile,
+    loading,
+    authError,
+    isFirebaseConfigured,
+    isAdmin,
+    signInWithGoogle,
+    loginAsPreviewUser,
+    signOut
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
